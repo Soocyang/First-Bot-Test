@@ -1,6 +1,7 @@
 require('dotenv').config()
 
 const Discord = require('discord.js');
+const Sequelize = require('sequelize');
 const client = new Discord.Client({
     partials: ['MESSAGE'],
 });
@@ -15,6 +16,31 @@ const ROLE_COLOR = {
   orange: '788223321140363276'
 }
 
+const sequelize = new Sequelize('database', 'user', 'password', {
+	host: 'localhost',
+	dialect: 'sqlite',
+	logging: false,
+	// SQLite only
+	storage: 'database.sqlite',
+});
+
+
+//Create model
+const Tags = sequelize.define('tags', {
+	name: {
+		type: Sequelize.STRING,
+		unique: true,
+	},
+	description: Sequelize.TEXT,
+	username: Sequelize.STRING,
+	usage_count: {
+		type: Sequelize.INTEGER,
+		defaultValue: 0,
+		allowNull: false,
+	},
+});
+
+
 const fs = require('fs');
 client.commands = new Discord.Collection();
 const commandFiles = fs.readdirSync('./commands/').filter(file => file.endsWith('.js'));
@@ -23,6 +49,10 @@ for(const file of commandFiles){
 
   client.commands.set(command.name, command);
 }
+
+client.once('ready', () => {
+  Tags.sync();
+})
 
 //Bot activity status
 client.on('ready', () => {
@@ -74,6 +104,113 @@ client.on('message', msg => {
     client.commands.get('ping').execute(msg, args);
   }
 });
+
+
+client.on('message', async msg => {
+
+  if (!msg.content.startsWith(PREFIX) || msg.author.bot) return;
+  const args = msg.content.slice(PREFIX.length).trim().split(' ');
+  const command = args.shift().toLowerCase();
+
+
+  if (command === 'addtag') {
+    const tagName = args[0];
+    const tagDescription = args[1];
+
+    try {
+      // equivalent to: INSERT INTO tags (name, description, username) values (?, ?, ?);
+      const tag = await Tags.create({
+    		name: tagName,
+    		description: tagDescription,
+    		username: msg.author.username,
+    	});
+    	return msg.reply(`Tag ${tag.name} added.`);
+    }
+    catch (e) {
+    	if (e.name === 'SequelizeUniqueConstraintError') {
+    		return msg.reply('That tag already exists.');
+      }
+      console.log(e);
+      return msg.reply('Something went wrong with adding a tag.');
+    }
+
+
+  } else if (command === 'tag') {
+
+    // //This section can be removed
+    // // equivalent to: SELECT * FROM tags WHERE name = 'tagName' LIMIT 1;
+    // const tag = await Tags.findOne({ where: { name: args[0] } });
+    // if (tag) {
+    // 	// equivalent to: UPDATE tags SET usage_count = usage_count + 1 WHERE name = 'tagName';
+    // 	tag.increment('usage_count');
+    // 	return msg.channel.send(tag.get('description'));
+    // }
+    // return msg.reply(`Could not find tag: ${tagName}`);
+
+  } else if (command === 'edittag') {
+    // [zeta]
+    const tagName = args[0];
+    const tagDescription = args[1];
+
+    // equivalent to: UPDATE tags (description) values (?) WHERE name='?';
+    const affectedRows = await Tags.update({ description: tagDescription }, { where: { name: tagName } });
+    if (affectedRows > 0) {
+    	return msg.reply(`Tag ${tagName} was edited.`);
+    }
+    return msg.reply(`Could not find a tag with name ${tagName}.`);
+
+  } else if (command === 'taginfo') {
+    
+    const tagName = args[0];
+
+    // equivalent to: SELECT * FROM tags WHERE name = 'tagName' LIMIT 1;
+    const tag = await Tags.findOne({ where: { name: tagName } });
+    if (tag) {
+    	return msg.channel.send(`${tagName} was created by ${tag.username} at ${tag.createdAt} and has been used ${tag.usage_count} times.`);
+    }
+    return msg.reply(`Could not find tag: ${tagName}`);
+    
+  } else if (command === 'showtags') {
+    // equivalent to: SELECT name FROM tags;
+    const tagList = await Tags.findAll({ attributes: ['name'] });
+    const tagString = tagList.map(t => t.name).join(', ') || 'No tags set.';
+    return msg.channel.send(`List of tags: ${tagString}`);
+
+  } else if (command === 'removetag') {
+    const tagName = args[0];
+    // equivalent to: DELETE from tags WHERE name = ?;
+    const rowCount = await Tags.destroy({ where: { name: tagName } });
+    if (!rowCount) return message.reply('That tag did not exist.');
+
+    return msg.reply('Tag deleted.');
+
+  }
+
+});
+
+
+client.on('message', async msg => {
+  if (!msg.content.startsWith(PREFIX) || msg.author.bot) return;
+  const args = msg.content.slice(PREFIX.length).trim().split(' ');
+  const command = args.shift().toLowerCase();
+
+  // equivalent to: SELECT * FROM tags WHERE name = 'tagName' LIMIT 1;
+  try{
+    const tag = await Tags.findOne({ where: { name: command } });
+    if (tag) {
+      // equivalent to: UPDATE tags SET usage_count = usage_count + 1 WHERE name = 'tagName';
+      tag.increment('usage_count');
+      return msg.channel.send(tag.get('description'));
+  }
+  }catch(e){
+    console.log(e);
+    return msg.reply(`Could not find tag: ${command}`);
+  }
+});
+
+
+
+
 
 function checkArgs(msg, args){
   if (!args.length) {
