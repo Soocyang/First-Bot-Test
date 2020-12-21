@@ -16,7 +16,6 @@ const sequelize = new Sequelize('database', 'user', 'password', {
 const Tags = sequelize.define('tags', {
 	name: {
 		type: Sequelize.STRING,
-		unique: true,
 	},
 	description: Sequelize.TEXT,
 	username: Sequelize.STRING,
@@ -24,7 +23,8 @@ const Tags = sequelize.define('tags', {
 		type: Sequelize.INTEGER,
 		defaultValue: 0,
 		allowNull: false,
-	},
+  },
+  guildId: Sequelize.INTEGER,
 });
 
 client.once('ready', () => {
@@ -77,7 +77,6 @@ module.exports = {
       else{
         return msg.channel.send(`Tag action not found!, ${msg.author}!`);
       }
-        
     }
 };
 
@@ -85,28 +84,32 @@ async function addtag(msg, name, desc){
   const tagName = name;
   const tagDescription = desc;
 
-  try {
-    // equivalent to: INSERT INTO tags (name, description, username) values (?, ?, ?);
-    const tag = await Tags.create({
-      name: tagName,
-      description: tagDescription,
-      username: msg.author.username,
-    });
-    return msg.reply(`Tag ${tag.name} added.`);
-  }
-  catch (e) {
-    if (e.name === 'SequelizeUniqueConstraintError') {
-      return msg.reply('That tag already exists. Please provide another tag name!');
+  const tag = await Tags.findOne({ where: { name: tagName, guildId: msg.guild.id} });
+  if (!tag) {
+    try {
+      // equivalent to: INSERT INTO tags (name, description, username) values (?, ?, ?);
+      const tag = await Tags.create({
+        name: tagName,
+        description: tagDescription,
+        username: msg.author.username,
+        guildId: msg.guild.id,
+      });
+      return msg.reply(`Tag ${tag.name} added.`);
     }
-    console.log('Something went wrong with adding a tag.');
-    console.log(e);
-    //return msg.reply('Something went wrong with adding a tag.');
+    catch (e) {
+      console.log('Something went wrong with adding a tag.');
+      console.log(e);
+      return msg.reply('Something went wrong with adding a tag.');
+    }
+  }
+  else{
+    return msg.reply('That tag already exists. Please provide another tag name!');
   }
 }
 
 async function edittag(msg, tagName, tagDescription){
     // equivalent to: UPDATE tags (description) values (?) WHERE name='?';
-    const affectedRows = await Tags.update({ description: tagDescription }, { where: { name: tagName } });
+    const affectedRows = await Tags.update({ description: tagDescription }, { where: { name: tagName, guildId: msg.guild.id } });
     if (affectedRows > 0) {
     	return msg.reply(`Tag ${tagName} was edited.`);
     }
@@ -115,7 +118,7 @@ async function edittag(msg, tagName, tagDescription){
 
 async function taginfo(msg, tagName){
   // equivalent to: SELECT * FROM tags WHERE name = 'tagName' LIMIT 1;
-  const tag = await Tags.findOne({ where: { name: tagName } });
+  const tag = await Tags.findOne({ where: { name: tagName, guildId: msg.guild.id } });
   if (tag) {
 
     const d = new Date( tag.createdAt );
@@ -128,7 +131,7 @@ async function taginfo(msg, tagName){
                   .setThumbnail(`${tag.description}`)
                   .addFields(
                     { name : 'Author', value: `Created by ${tag.username}`, inline: true },
-                    { name : 'Use Count', value: `${tag.usage_count} times.`, inline: true }
+                    { name : 'Use Count', value: `${tag.usage_count} times.`, inline: true },
                   )
                   .setFooter(`Created at ${date}`);
       return msg.channel.send(embed);
@@ -141,7 +144,7 @@ async function taginfo(msg, tagName){
         { name : 'Description', value: `${tag.description}`},
         { name: '\u200B', value: '\u200B' },
         { name : 'Author', value: `Created by ${tag.username}`, inline: true },
-        { name : 'Use Count', value: `${tag.usage_count} times.`, inline: true }
+        { name : 'Use Count', value: `${tag.usage_count} times.`, inline: true },
       )
       .setFooter(`Created at ${date}`);
       return msg.channel.send(embed);
@@ -152,7 +155,7 @@ async function taginfo(msg, tagName){
 
 async function removetag(msg, tagName){
   // equivalent to: DELETE from tags WHERE name = ?;
-  const rowCount = await Tags.destroy({ where: { name: tagName } });
+  const rowCount = await Tags.destroy({ where: { name: tagName, guildId: msg.guild.id  } });
   if (!rowCount) return message.reply('That tag did not exist.');
 
   return msg.reply('Tag deleted.');
@@ -160,7 +163,7 @@ async function removetag(msg, tagName){
 
 async function taglist(msg, client){
     // equivalent to: SELECT name FROM tags;
-    const tagList = await Tags.findAll({ attributes: ['name'] });
+    const tagList = await Tags.findAll({ attributes: ['name'] , where: {guildId: msg.guild.id} });
     const tagString = tagList.map(t => t.name).join('\n') || 'No tags set.';
 
     const embed = new Discord.MessageEmbed()

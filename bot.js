@@ -18,7 +18,6 @@ const sequelize = new Sequelize('database', 'user', 'password', {
 const Tags = sequelize.define('tags', {
 	name: {
 		type: Sequelize.STRING,
-		unique: true,
 	},
 	description: Sequelize.TEXT,
 	username: Sequelize.STRING,
@@ -26,7 +25,8 @@ const Tags = sequelize.define('tags', {
 		type: Sequelize.INTEGER,
 		defaultValue: 0,
 		allowNull: false,
-	},
+  },
+  guildId: Sequelize.INTEGER,
 });
 
 client.once('ready', () => {
@@ -74,12 +74,12 @@ client.on('message', async msg => {
 
   // equivalent to: SELECT * FROM tags WHERE name = 'tagName' LIMIT 1;
   try{
-    const tag = await Tags.findOne({ where: { name: command } });
+    const tag = await Tags.findOne({ where: { name: command, guildId: msg.guild.id} });
     if (tag) {
       // equivalent to: UPDATE tags SET usage_count = usage_count + 1 WHERE name = 'tagName';
       tag.increment('usage_count');
       return msg.channel.send(tag.get('description'));
-  }
+    }
   }catch(e){
     console.log(e);
     return msg.reply(`Could not find tag: ${command}`);
@@ -107,6 +107,11 @@ client.on('message', async msg => {
   else if(command === 'ping'){
     client.commands.get('ping').execute(msg, args);
   }
+  else if(command === 'guild'){
+    msg.channel.send(msg.guild.id);
+  }
+
+
 });
 
 function checkArgs(msg, args){
