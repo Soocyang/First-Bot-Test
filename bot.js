@@ -162,28 +162,9 @@ function modUser(msg, color){
   }
 }
 
-
-async function play(voiceChannel) {
-  const dispatcher = voiceChannel.play('./resource/y2mate_OzpmNhZ.mp3');
-
-  dispatcher.on('start', () => {
-    console.log('y2mate_OzpmNhZ.mp3 is now playing!');
-  });
-  
-  dispatcher.on('finish', () => {
-    dispatcher.destroy();
-    console.log('y2mate_OzpmNhZ.mp3 finished playing!');
-    voiceChannel.disconnect();
-  });
-  
-  // Always remember to handle errors appropriately!
-  dispatcher.on('error', console.error);
-
-}
-
-
 // Testing Music Bot
 let connection;
+let dispatcher;
 let isPlaying = 0;
 let musicQueue = [];
 const streamOptions = {
@@ -259,16 +240,8 @@ client.on('message', async msg => {
             console.log(e);
           }
         }
-
-
       }
-
-
     }
-
-
-
-
   }
   else if(command === 'queue' || command === 'q'){
 
@@ -302,24 +275,59 @@ client.on('message', async msg => {
 
     const voiceChannel = msg.member.voice.channel;
     if(!voiceChannel) return msg.reply('You need to be in a voice channel to execute this command!');
- 
+   
+    if(musicQueue.length === 1) return msg.reply('You are skipping the last song!');
+    
     musicQueue.shift();
-    if(musicQueue[0] === undefined) return msg.reply('You are skipping the last song!');
 
     try{
       await playSong(msg, connection, voiceChannel);
       isPlaying = 1;
-      msg.react('⏭️')
+      msg.react('⏭️');
     }
     catch(e){
       console.log(e);
     }
+  }
+  else if(command === 'pause'){
+    dispatcher.pause();
+    msg.react('⏸️');
+  }
+  else if(command === 'resume'){
+    dispatcher.resume();
+    msg.react('▶️');
+  }
+  else if(command === 'remove'){
+
+    const index = parseInt(args[0]);
+
+    if(index == 0) return msg.reply('To remove current song why not use "skip" instead :joy:')
+    if(index > musicQueue.length-1) return msg.reply('The number of the song not found!');
+    if(!Number.isInteger(index)) return msg.reply('Not a valid number!');
+
+    const songUrl = musicQueue[index];
+    //remove requested song
+    musicQueue.splice(index, 1);
+
+    try{
+          const embed = new Discord.MessageEmbed()
+          .setColor(0x3ba3ee)
+          .setAuthor(client.user.username, client.user.displayAvatarURL())
+          .setDescription('Song removed from the queue\n' + 
+                            `[${(await ytdl.getBasicInfo(songUrl)).videoDetails.title}](${songUrl})`);
+          msg.channel.send(embed);
+    }
+    catch(e){
+      console.log(e);
+    }
+
   }
   else if(command === 'dis' || command === 'disconnect'){
     const voiceChannel = msg.member.voice.channel;
 
     if(!voiceChannel) return msg.channel.send('You need to be in a voice channel to stop the music!');
     await voiceChannel.leave();
+    await msg.react('🛑');
     await msg.channel.send('Murrr has leave the channel :C');
     isPlaying = 0;
     musicQueue = [];
@@ -328,14 +336,11 @@ client.on('message', async msg => {
 
 });
 
-
-
-
 async function playSong(msg, connection, voiceChannel) {
 
   const stream = ytdl(musicQueue[0], { filter: 'audioonly' });
   const songInfo = ytdl.getBasicInfo(musicQueue[0]);
-  const dispatcher = connection.play(stream, streamOptions);
+  dispatcher = connection.play(stream, streamOptions);
 
   const embed = new Discord.MessageEmbed()
             .setColor(0x3ba3ee)

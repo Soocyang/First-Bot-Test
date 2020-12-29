@@ -13,17 +13,20 @@ module.exports = {
                         .setDescription(
                             'Need help? Here it is.\n\n' + 
                             '**Commands**\n\n' +
-                            '**Musics**\n' +
+                            '**:headphones: Musics :musical_note:**\n' +
                             '`~p or ~play [song name] or [url]` to **Add** song or queue \n' + 
                             '`~q or ~queue` to view the song list/ Song **Queue**\n' +
+                            '`~remove [index/number]` to **Remove** the song\n' +
                             '`~skip` to **Skip** current track \n' +
                             '`~dis or ~disconnect` to **Disconect** bot\n\n' +
-                            '**Tags**\n' +
+                            '**:label: Tags** (Not stable)\n' +
                             '`~tag add [name] [description]` to **Add** tag \n' + 
                             '`~tag edit [name] [description]` to **Edit** tag \n' +
                             '`~tag info [name]` to **Show** tag **info** \n' + 
                             '`~tag remove [name]` to **Remove** tag \n' + 
-                            '`~tag list` to **show all** tags list')
+                            '`~tag list` to **show all** tags list\n\n' +
+                            '**:sparkles: Extras**\n' + 
+                            '`~cat` to summon random cats :smile_cat:')
                         .setFooter(`By ${user.username}`, `${user.displayAvatarURL()}`);
         msg.channel.send(embed);
     }
