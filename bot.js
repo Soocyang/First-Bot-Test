@@ -183,8 +183,7 @@ let songQueue = [];
 let loopFlag = 0;
 const streamOptions = {
   seek: 0,
-  volumn: 0.5,
-  highWaterMark: 1
+  volumn: 0.5
 }
 
 client.on('message', async msg => {
@@ -332,7 +331,7 @@ client.on('message', async msg => {
 async function playSong(msg, connection, voiceChannel) {
 
   const currentTrack = songQueue[0];
-  const stream = ytdl(currentTrack.url, { filter: 'audioonly', quality: 'highestaudio', highWaterMark: 1<<25 });
+  const stream = ytdl(currentTrack.url, { filter: 'audioonly' });
 
   dispatcher = connection.play(stream, streamOptions);
 
