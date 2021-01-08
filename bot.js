@@ -4,6 +4,7 @@ const fetch = require('node-fetch');
 const Discord = require('discord.js');
 const ytdl = require('ytdl-core');
 const ytSearch = require('yt-search');
+const randomColor = require('randomcolor');
 const Sequelize = require('sequelize');
 const client = new Discord.Client({
     partials: ['MESSAGE'],
@@ -63,12 +64,12 @@ for(const file of commandFiles){
 client.on('ready', () => {
   console.log("Bot is ready!!!");
   let statusCounter = 0;
-  const statuses = ['Mr & Mrs Gao', 'Kurzgesagt – In a Nutshell', 'TEDx Talks', 'Vsauce', 'Li Ke Tai Tai', 'Veritasium'];
+  const statuses = ['迎春花', '财神到', '春风吻上我得脸', '大发财', '贺新年', '大团圆'];
 
   const statusItv = setInterval(updateStatus, 300000);
 
   function updateStatus(){
-    client.user.setActivity(`${statuses[statusCounter]} ` + '| ~help', { type:'WATCHING' });
+    client.user.setActivity(`${statuses[statusCounter]} ` + '| ~help', { type:'LISTENING' });
     if(statusCounter == statuses.length - 1){
     	statusCounter = -1;
     }
@@ -178,11 +179,12 @@ function modUser(msg, color){
 let connection;
 let dispatcher;
 let isPlaying = 0;
-let musicQueue = [];
+let songQueue = [];
 let loopFlag = 0;
 const streamOptions = {
   seek: 0,
-  volumn: 0.5
+  volumn: 0.5,
+  highWaterMark: 1
 }
 
 client.on('message', async msg => {
@@ -200,30 +202,7 @@ client.on('message', async msg => {
     connection = await voiceChannel.join();
 
     if(ytdl.validateURL(searchKeysUrl)){
-
-      //check if the url is repeated
-      const flag = musicQueue.some(element => element === searchKeysUrl);
-      if(!flag){
-        musicQueue.push(searchKeysUrl);
-
-        if(isPlaying){
-          const embed = new Discord.MessageEmbed()
-          .setColor(0x3ba3ee)
-          .setAuthor(client.user.username, client.user.displayAvatarURL())
-          .setDescription('Song successfully added to the queue\n' + 
-                            `[${(await ytdl.getBasicInfo(searchKeysUrl)).videoDetails.title}](${searchKeysUrl})`);
-          msg.channel.send(embed);
-        }
-        else {
-          try{
-            await playSong(msg, connection, voiceChannel);
-            isPlaying = 1;
-          }
-          catch(e){
-            console.log(e);
-          }
-        }
-      }
+      addSongtoQueue(searchKeysUrl, msg, connection, voiceChannel);
     }
     else{
       //If not a valid url then use ytsearch for the clip
@@ -234,26 +213,7 @@ client.on('message', async msg => {
 
       const video = await videoFinder(args.join(' '));
       if(video){
-
-        musicQueue.push(video.url);
-
-        if(isPlaying){
-          const embed = new Discord.MessageEmbed()
-          .setColor(0x3ba3ee)
-          .setAuthor(client.user.username, client.user.displayAvatarURL())
-          .setDescription('Song successfully added to the queue\n' + 
-                            `[${(await ytdl.getBasicInfo(video.url)).videoDetails.title}](${video.url})`);
-          msg.channel.send(embed);
-        }
-        else {
-          try{
-            await playSong(msg, connection, voiceChannel);
-            isPlaying = 1;
-          }
-          catch(e){
-            console.log(e);
-          }
-        }
+        addSongtoQueue(video.url, msg, connection, voiceChannel);
       }
     }
   }
@@ -261,47 +221,52 @@ client.on('message', async msg => {
 
     const voiceChannel = msg.member.voice.channel;
     if(!voiceChannel) return msg.channel.send('You need to be in a voice channel to execute this command!');
-    if(musicQueue.length == 0) return msg.channel.send('The song queue is currently empty');
+    if(songQueue.length == 0) return msg.channel.send('The song queue is currently empty');
 
-    try{
-      let currentlyPlaying = (await ytdl.getBasicInfo(musicQueue[0])).videoDetails.title;
-      let upNext = '';
-  
-      for(var i = 1; i < musicQueue.length; i++){
-        upNext += `${i}. "` + (await ytdl.getBasicInfo(musicQueue[i])).videoDetails.title + '"\n';
-      }
+    let currentlyPlaying = '[' + songQueue[0].title + '](' + songQueue[0].url + ')\n' + 
+                           '⌚ \`' + songQueue[0].duration + '\` ' +
+                           ' : \`[' + songQueue[0].username + ']\`';
+    let totalTime = Number(songQueue[0].length);
 
-      if(loopFlag == 1){
-        currentlyPlaying += '" 🎶 >> 🔂Looping ';
-      }        
-      else{
-        currentlyPlaying += '" 🎶';
-      }
-
-      msg.channel.send('```bash\n'+
-                      'Song List\n' +
-                      '---------\n' +
-                      'Currently Playing\n' + 
-                      `▶️ "${currentlyPlaying}\n\n` +
-                      'Coming Up Next Songs\n' +
-                      `${upNext}` +
-                      '```');
-                      
-    }catch(e){
-      console.log(e);
+    if(loopFlag == 1){
+      currentlyPlaying += ' - 🔂Looping ';
+    }
+    
+    let upNext = '';
+    if(songQueue[1] != undefined) upNext += '**Up Next**\n';
+    
+    for(var i = 1; i < songQueue.length; i++){
+      upNext += `\`${i}.\`` + '[' + songQueue[i].title + '](' + songQueue[i].url + ') | ' + 
+                ' ⌚ \`' + songQueue[i].duration + '\`' +
+                ' : \`[' + songQueue[i].username + ']\`\n\n';
+      totalTime += Number(songQueue[i].length);
     }
 
+    const totalMinutes = Math.floor( totalTime / 60 );
+    const totalSeconds = totalTime - totalMinutes * 60;
     
+    totalTime = str_pad_left(totalMinutes,'0',2)+':'+str_pad_left(totalSeconds,'0',2);
+
+    const embed = new Discord.MessageEmbed()
+                    .setColor(randomColor())
+                    .setTitle(`🎶 Song Queue for ${msg.guild.name}`)
+                    .setDescription(
+                      `**Now Playing** \n` + 
+                      `${currentlyPlaying} \n\n` + 
+                      `${upNext}\n`)
+                    .setFooter(`${songQueue.length} songs in queue | Total length: ${totalTime}`, msg.guild.iconURL());
+                    msg.channel.send(embed);
+
   } 
   else if(command === 'skip'){
 
     const voiceChannel = msg.member.voice.channel;
     if(!voiceChannel) return msg.reply('You need to be in a voice channel to execute this command!');
    
-    if(musicQueue.length === 1) return msg.reply('You are skipping the last song!');
+    if(songQueue.length === 1) return msg.reply('You are skipping the last song!');
     
     loopFlag = 0;
-    musicQueue.shift();
+    songQueue.shift();
 
     try{
       await playSong(msg, connection, voiceChannel);
@@ -333,36 +298,32 @@ client.on('message', async msg => {
     const index = parseInt(args[0]);
 
     if(index == 0) return msg.reply('To remove current song why not use "skip" instead :joy:')
-    if(index > musicQueue.length-1) return msg.reply('The number of the song not found!');
+    if(index > songQueue.length-1) return msg.reply('The number of the song not found!');
     if(!Number.isInteger(index)) return msg.reply('Not a valid number!');
 
-    const songUrl = musicQueue[index];
+    const song = songQueue[index];
     //remove requested song
-    musicQueue.splice(index, 1);
+    songQueue.splice(index, 1);
 
-    try{
-          const embed = new Discord.MessageEmbed()
-          .setColor(0x3ba3ee)
-          .setAuthor(client.user.username, client.user.displayAvatarURL())
-          .setDescription('Song removed from the queue\n' + 
-                            `[${(await ytdl.getBasicInfo(songUrl)).videoDetails.title}](${songUrl})`);
-          msg.channel.send(embed);
-    }
-    catch(e){
-      console.log(e);
-    }
+    msg.react('👌');
+    const embed = new Discord.MessageEmbed()
+                    .setColor(randomColor())
+                    .setTitle(':ballot_box_with_check: Removed')
+                    .setDescription(`**[${song.title}](${song.url})**`)
+                    .setThumbnail(song.thumbail.url)
+    msg.channel.send(embed);
 
   }
   else if(command === 'dis' || command === 'disconnect'){
     const voiceChannel = msg.member.voice.channel;
 
     if(!voiceChannel) return msg.channel.send('You need to be in a voice channel to stop the music!');
-    await voiceChannel.leave();
-    await msg.react('🛑');
-    await msg.channel.send('Murrr has leave the channel :C');
+    voiceChannel.leave();
+    msg.react('🛑');
+    msg.channel.send('Murrr has disconnected :wave:');
     isPlaying = 0;
     loopFlag = 0;
-    musicQueue = [];
+    songQueue = [];
 
   }
 
@@ -370,15 +331,19 @@ client.on('message', async msg => {
 
 async function playSong(msg, connection, voiceChannel) {
 
-  const stream = ytdl(musicQueue[0], { filter: 'audioonly' });
-  const songInfo = ytdl.getBasicInfo(musicQueue[0]);
+  const currentTrack = songQueue[0];
+  const stream = ytdl(currentTrack.url, { filter: 'audioonly', quality: 'highestaudio', highWaterMark: 1<<25 });
+
   dispatcher = connection.play(stream, streamOptions);
 
   const embed = new Discord.MessageEmbed()
-            .setColor(0x3ba3ee)
-            .setAuthor(client.user.username, client.user.displayAvatarURL())
-            .setDescription('Currently Playing \n' + 
-                            `[${(await songInfo).videoDetails.title}](${musicQueue[0]})`);
+            .setColor(randomColor())
+            .setTitle('🎵 Now Playing')
+            .setDescription(`**[${currentTrack.title}](${currentTrack.url})**`)
+            .setThumbnail(currentTrack.thumbail.url)
+            .addField('Song duration', `⌚ ${currentTrack.duration}`, true)
+            .addField('Channel', `🎤 ${currentTrack.author.name}`, true)
+            .setFooter(`Requested by ${currentTrack.username}`,`${currentTrack.userpic}`);
             msg.channel.send(embed);
             
   //console.log(stream);
@@ -386,11 +351,11 @@ async function playSong(msg, connection, voiceChannel) {
   dispatcher.on('finish', () => {
 
     if(loopFlag == 0){
-      musicQueue.shift();
+      songQueue.shift();
       setTimeout(() => {
-        if(musicQueue.length == 0){
+        if(songQueue.length == 0){
           isPlaying = 0;
-          voiceChannel.leave();
+          msg.channel.send('The queue is empty now! Play some song now!')
         }
         else{
           playSong(msg, connection, voiceChannel);
@@ -400,6 +365,60 @@ async function playSong(msg, connection, voiceChannel) {
       playSong(msg, connection, voiceChannel);
     }
   })
+}
+
+
+async function addSongtoQueue(url, msg, connection, voiceChannel ){
+
+  //Add song to the queue
+  const songDetails = (await ytdl.getBasicInfo(url)).videoDetails;
+  const songLength = songDetails.lengthSeconds
+  const songMinutes = Math.floor( songLength / 60 );
+  const songSeconds = songLength - songMinutes * 60;
+  
+  const songDuration = str_pad_left(songMinutes,'0',2)+':'+str_pad_left(songSeconds,'0',2);
+  const song = {
+    title: songDetails.title,
+    url: url,
+    duration: songDuration,
+    length: songLength,
+    author: songDetails.author,
+    thumbail: songDetails.thumbnails[1],
+    username: msg.author.username,
+    userpic: msg.author.displayAvatarURL()
+  }
+  songQueue.push(song);
+
+  // Verify the bot is playing 
+  if(isPlaying){
+
+    //if Yes reply song added to the queue
+    const embed = new Discord.MessageEmbed()
+    .setColor(randomColor())
+    .setAuthor('Song added to the queue', msg.author.displayAvatarURL())
+    .setDescription(`**[${song.title}](${song.url})**`)
+    .setThumbnail(song.thumbail.url)
+    .addField('Song duration', `⌚ ${song.duration}`, true)
+    .addField('Channel', `🎤 ${song.author.name}`, true);
+
+    msg.channel.send(embed);
+  }
+  else {
+
+    //if not start playing
+    try{
+      await playSong(msg, connection, voiceChannel);
+      isPlaying = 1;
+    }
+    catch(e){
+      console.log(e);
+    }
+  }
+
+}
+
+function str_pad_left(string,pad,length) {
+  return (new Array(length+1).join(pad)+string).slice(-length);
 }
 
 //Login bot
